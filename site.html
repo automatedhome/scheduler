@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  </head>
+  <body>
+    <div class="container">
+      <div class="row">
+        <h1 class="center-align" id="title">Schedule</h1>
+      </div>
+      <div class="row">
+        <div class="col s12">
+          <ul class="tabs">
+            <li class="tab col s3 offset-s3"><a href="#workday" id="tab-workday">Workday</a></li>
+            <li class="tab col s3"><a href="#freeday" id="tab-freeday">Holiday</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <form id="scheduleForm" method="POST">
+      <div class="container schedule" id="workday">
+{{range .Workday}}
+        <div class="row">
+          <div class="col s1 offset-s3"><input required type="text" class="timepicker" name="workdayFrom" value="{{ .From }}"></div>
+          <div class="col s1 center-align"><p><i class="material-icons">remove</i></p></div>
+          <div class="col s1"><input required type="text" class="timepicker" name="workdayTo" value="{{ .To }}"></div>
+          <div class="col s1 right-align"><p name="set-text">set</p></div>
+          <div class="col s1"><input required type="number" step="0.1" min=17 max=25 name="workdayTemperature" value="{{ .Temperature }}"></div> <!-- TODO: create a slider in a modal for this -->
+          <div class="col s1 right-align"><a class="btn waves-effect waves-light red" onclick="removeRow(this)"><i class="material-icons">remove</i></a></div>
+        </div>
+{{end}}
+      </div>
+      <div class="container schedule" id="freeday">
+{{range .Freeday}}
+        <div class="row">
+          <div class="col s1 offset-s3"><input required type="text" class="timepicker" name="freedayFrom" value="{{ .From }}"></div>
+          <div class="col s1 center-align"><p><i class="material-icons">remove</i></p></div>
+          <div class="col s1"><input required type="text" class="timepicker" name="freedayTo" value="{{ .To }}"></div>
+          <div class="col s1 right-align"><p name="set-text">set</p></div>
+          <div class="col s1"><input required type="number" step="0.1" min=17 max=25 name="freedayTemperature" value="{{ .Temperature }}"></div> <!-- TODO: create a slider in a modal for this -->
+          <div class="col s1 right-align"><a class="btn waves-effect waves-light red" onclick="removeRow(this)"><i class="material-icons">remove</i></a></div>
+        </div>
+{{end}}
+      </div>
+  
+      <div class="container">
+        <div class="row">
+          <div class="col s2 offset-s3 right-align"><p id="set-default">default temperature</p></div>
+          <div class="col s1"><input required type="number" step="0.1" min=17 max=25 name="defaultTemperature" value="{{ .DefaultTemperature }}"></div>
+          <div class="col s1 push-s2 right-align"><a class="btn waves-effect waves-light blue" onclick="addRow(this)"><i class="material-icons">add</i></a></div>
+        </div>
+        <div class="row">
+          <div class="col s6 offset-s3 center-align"><button class="btn waves-effect waves-light" type="submit" id="submitButton">Save<i class="material-icons right">send</i></button></div>
+<!--          <div id="confirmation" class="modal">
+            <div class="modal-content">
+              <h4>Success!</h4>
+              <p>Settings were saved successfully.</p>
+            </div>
+            <div class="modal-footer">
+              <a href="#!" class="modal-close waves-effect waves-green btn-flat">Close</a>
+            </div>
+          </div> -->
+        </div>
+      </div>
+    </form>
+
+  </body>
+  <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script> <!-- TODO: used only to reference current object in add/remove row-->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script src="https://unpkg.com/i18next/i18next.min.js"></script>
+
+  <script>
+document.addEventListener('DOMContentLoaded', function() {
+  var timepickers = document.querySelectorAll('.timepicker');
+  M.Timepicker.init(timepickers, {twelveHour: false});
+//  var modal = document.querySelectorAll('.modal');
+//  M.Modal.init(modal, {});
+  var el = document.querySelectorAll('.tabs');
+  var instance = M.Tabs.init(el, {});
+});
+
+function addRow(obj){
+  var type = $(".schedule.active").attr('id');
+  console.log(type);
+  $(".schedule.active").append('\
+      <div class="row">\
+        <div class="col s1 offset-s3"><input required type="text" placeholder="00:00" class="timepicker" name="'+type+'From"></div>\
+        <div class="col s1 center-align"><p><i class="material-icons">remove</i></p></div>\
+        <div class="col s1"><input required type="text" placeholder="00:00" class="timepicker" name="'+type+'To"></div>\
+        <div class="col s1 right-align"><p name="set-text">set</p></div>\
+        <div class="col s1"><input required type="number" step="0.1" min=17 max=25 placeholder=17.0 name="'+type+'Temperature"></div>\
+        <div class="col s1 right-align"><a class="btn waves-effect waves-light red" onclick="removeRow(this)"><i class="material-icons">remove</i></a></div>\
+      </div>\
+    ');
+  var timepickers = document.querySelectorAll('.timepicker');
+  M.Timepicker.init(timepickers, {twelveHour: false});
+  updateContent();
+}
+
+function removeRow(obj){
+  $(obj).closest('.row').remove();
+};
+
+function updateContent() {
+  // initialized and ready to go!
+  document.getElementById('tab-workday').innerHTML = i18next.t('workday');
+  document.getElementById('tab-freeday').innerHTML = i18next.t('freeday');
+  document.getElementById('title').innerHTML = i18next.t('schedule');
+  document.getElementById('set-default').innerHTML = i18next.t('default temperature');
+  document.getElementById('submitButton').innerHTML = i18next.t('save');
+  document.getElementsByName('set-text').forEach(function (item) {
+    item.innerHTML = i18next.t('set');
+  });
+}
+
+i18next.init({
+  fallbackLng: 'pl',
+  resources: {
+    en: {
+      translation: {
+        "freeday": "Holiday",
+        "workday": "Workday",
+        "schedule"  : "Schedule",
+        "set"    : "set",
+        "default temperature": "default temperature",
+        "save"   : "Save"
+      }
+    },
+    pl: {
+      translation: {
+        "freeday": "Dzień wolny",
+        "workday": "Praca praca",
+        "schedule" : "Harmonogram",
+        "set"    : "ustaw",
+        "default temperature": "domyślna temperatura",
+        "save"   : "Zapisz"
+      }
+    }
+  }
+}, function(err, t) {
+  updateContent();
+});
+
+  </script>
+
+</html>
