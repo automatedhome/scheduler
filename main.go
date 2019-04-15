@@ -125,7 +125,7 @@ func main() {
   topic := flag.String("topic", "test", "Topic to subscribe to")
   clientID := flag.String("clientid", "scheduler", "A clientid for the connection")
   address := flag.String("address", ":3000", "Address to expose HTTP interface")
-  template := flag.String("template", "/usr/local/share/site.tmpl", "Path to a site template file")
+  template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
   flag.Parse()
   
   TEMPLATE = *template
