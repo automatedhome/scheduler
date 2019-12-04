@@ -112,7 +112,7 @@ func init() {
 
 func main() {
 	server := flag.String("server", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
-	topic := flag.String("topic", "scheduler", "Topic to subscribe to")
+	topic := flag.String("topic", "thermostat/schedule", "Topic to publish on")
 	clientID := flag.String("clientid", "scheduler", "A clientid for the connection")
 	address := flag.String("address", ":3000", "Address to expose HTTP interface")
 	template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
