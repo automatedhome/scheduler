@@ -33,9 +33,9 @@ func publishData() {
 	token := MQTTClient.Publish(MQTTTopic, 0, true, string(text))
 	token.Wait()
 	if token.Error() != nil {
-		fmt.Printf("Failed to publish packet: %s", token.Error())
+		fmt.Printf("Failed to publish packet: %s\n", token.Error())
 	}
-	fmt.Printf("Published packet to topic %s", MQTTTopic)
+	fmt.Printf("Published packet to topic %s\n", MQTTTopic)
 }
 
 func onMessageReceived(client mqtt.Client, message mqtt.Message) {
@@ -116,6 +116,8 @@ func main() {
 	clientID := flag.String("clientid", "scheduler", "A clientid for the connection")
 	address := flag.String("address", ":3000", "Address to expose HTTP interface")
 	template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
+	tlsCrt := flag.String("tlsCrt", "", "Path to a TLS certificate")
+	tlsKey := flag.String("tlsKey", "", "Path to a TLS certificate key")
 	flag.Parse()
 
 	TEMPLATE = *template
@@ -138,8 +140,13 @@ func main() {
 		panic(token.Error())
 	}
 	fmt.Printf("Connected to %s as %s and listening on topic: %s\n", *server, *clientID, *topic)
-	fmt.Printf("Exposing HTTP interface on %s\n", *address)
 
 	http.HandleFunc("/", HTTPHandler)
-	http.ListenAndServe(*address, nil)
+	if *tlsCrt == "" || *tlsKey == "" {
+		fmt.Printf("Exposing HTTP interface on %s without TLS config\n", *address)
+		http.ListenAndServe(*address, nil)
+	} else {
+		fmt.Printf("Exposing HTTP interface on %s with TLS config\n", *address)
+		http.ListenAndServeTLS(*address, *tlsCrt, *tlsKey, nil)
+	}
 }
