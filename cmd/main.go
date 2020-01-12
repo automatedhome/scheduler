@@ -78,7 +78,7 @@ func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 	ip := getRealAddr(r)
 	_, cidr, _ := net.ParseCIDR(internalNetwork)
 	if !cidr.Contains(net.ParseIP(ip)) {
-		fmt.Printf("Incorrect IP address: %s", ip)
+		http.Error(w, "403 Access Forbidden", http.StatusForbidden)
 		return
 	}
 
