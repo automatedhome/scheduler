@@ -4,22 +4,49 @@ import (
 	"fmt"
 	"html/template"
 	"math"
+	"net"
 	"net/http"
 	"strconv"
 
 	//  "os"
 	"encoding/json"
 	"flag"
+	"strings"
 	"time"
 
 	types "github.com/automatedhome/scheduler/pkg/types"
 	"github.com/eclipse/paho.mqtt.golang"
 )
 
+var internalNetwork string
 var MQTTClient mqtt.Client
 var MQTTTopic string
 var DATA types.Schedule
 var TEMPLATE string
+
+func getRealAddr(r *http.Request) string {
+	remoteIP := ""
+	// the default is the originating ip. but we try to find better options because this is almost
+	// never the right IP
+	if parts := strings.Split(r.RemoteAddr, ":"); len(parts) == 2 {
+		remoteIP = parts[0]
+	}
+	// If we have a forwarded-for header, take the address from there
+	if xff := strings.Trim(r.Header.Get("X-Forwarded-For"), ","); len(xff) > 0 {
+		addrs := strings.Split(xff, ",")
+		lastFwd := addrs[len(addrs)-1]
+		if ip := net.ParseIP(lastFwd); ip != nil {
+			remoteIP = ip.String()
+		}
+		// parse X-Real-Ip header
+	} else if xri := r.Header.Get("X-Real-Ip"); len(xri) > 0 {
+		if ip := net.ParseIP(xri); ip != nil {
+			remoteIP = ip.String()
+		}
+	}
+
+	return remoteIP
+}
 
 func parseFloat(number string) float64 {
 	tmp, _ := strconv.ParseFloat(number, 64)
@@ -48,6 +75,13 @@ func onMessageReceived(client mqtt.Client, message mqtt.Message) {
 }
 
 func HTTPHandler(w http.ResponseWriter, r *http.Request) {
+	ip := getRealAddr(r)
+	_, cidr, _ := net.ParseCIDR(internalNetwork)
+	if !cidr.Contains(net.ParseIP(ip)) {
+		fmt.Printf("Incorrect IP address: %s", ip)
+		return
+	}
+
 	tmpl := template.Must(template.ParseFiles(TEMPLATE))
 	if r.Method == "POST" {
 		r.ParseForm()
@@ -98,6 +132,7 @@ func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
+	internalNetwork = "192.168.0.0/16"
 	DATA = types.Schedule{
 		DefaultTemperature: 18.0,
 		Workday: []types.ScheduleCell{
