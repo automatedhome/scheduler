@@ -15,7 +15,7 @@ import (
 	"time"
 
 	types "github.com/automatedhome/scheduler/pkg/types"
-	"github.com/eclipse/paho.mqtt.golang"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 var internalNetwork string
@@ -23,6 +23,7 @@ var MQTTClient mqtt.Client
 var MQTTTopic string
 var DATA types.Schedule
 var TEMPLATE string
+var REFERERS []string
 
 func getRealAddr(r *http.Request) string {
 	remoteIP := ""
@@ -53,6 +54,15 @@ func parseFloat(number string) float64 {
 	return math.Round(tmp*100) / 100
 }
 
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
+}
+
 //func publishData(client mqtt.Client, topic string) {
 func publishData() {
 	text, _ := json.Marshal(DATA)
@@ -76,8 +86,13 @@ func onMessageReceived(client mqtt.Client, message mqtt.Message) {
 
 func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 	ip := getRealAddr(r)
-	_, cidr, _ := net.ParseCIDR(internalNetwork)
-	if !cidr.Contains(net.ParseIP(ip)) {
+	fmt.Printf("Connected client from %s\n", ip)
+	//_, cidr, _ := net.ParseCIDR(internalNetwork)
+	//if !cidr.Contains(net.ParseIP(ip)) {
+	//	http.Error(w, "403 Access Forbidden", http.StatusForbidden)
+	//	return
+	//}
+	if !stringInSlice(r.Header.Get("Referer"), REFERERS) {
 		http.Error(w, "403 Access Forbidden", http.StatusForbidden)
 		return
 	}
@@ -153,7 +168,10 @@ func main() {
 	template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
 	tlsCrt := flag.String("tlsCrt", "", "Path to a TLS certificate")
 	tlsKey := flag.String("tlsKey", "", "Path to a TLS certificate key")
+	referers := flag.String("referers", "", "Comma-separated list of accepted HTTP Referer Headers")
 	flag.Parse()
+
+	REFERERS = strings.Split(*referers, ",")
 
 	TEMPLATE = *template
 	fmt.Printf("Using template file located at %s\n", *template)
