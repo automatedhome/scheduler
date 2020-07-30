@@ -18,9 +18,8 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-var internalNetwork string
-var MQTTClient mqtt.Client
 var MQTTTopic string
+var MQTTClient mqtt.Client
 var DATA types.Schedule
 var TEMPLATE string
 var TOKEN string
@@ -54,15 +53,6 @@ func parseFloat(number string) float64 {
 	return math.Round(tmp*100) / 100
 }
 
-func stringInSlice(a string, list []string) bool {
-	for _, b := range list {
-		if b == a {
-			return true
-		}
-	}
-	return false
-}
-
 //func publishData(client mqtt.Client, topic string) {
 func publishData() {
 	text, _ := json.Marshal(DATA)
@@ -89,11 +79,12 @@ func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Connected client from %s\n", ip)
 
 	params, ok := r.URL.Query()["token"]
-	if !ok || len(params[0] < 1) {
+	if !ok || len(params[0]) < 1 {
+		fmt.Printf("No token received")
 		http.Error(w, "403 Access Forbidden", http.StatusForbidden)
 		return
 	}
-	token := params[0]
+	token := string(params[0])
 	if token != TOKEN {
 		fmt.Printf("Received incorrect token: %s\n", token)
 		http.Error(w, "403 Access Forbidden", http.StatusForbidden)
@@ -150,7 +141,6 @@ func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
-	internalNetwork = "192.168.0.0/16"
 	DATA = types.Schedule{
 		DefaultTemperature: 18.0,
 		Workday: []types.ScheduleCell{
@@ -169,12 +159,13 @@ func main() {
 	clientID := flag.String("clientid", "scheduler", "A clientid for the connection")
 	address := flag.String("address", ":3000", "Address to expose HTTP interface")
 	template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
-	tlsCrt := flag.String("tlsCrt", "", "Path to a TLS certificate")
-	tlsKey := flag.String("tlsKey", "", "Path to a TLS certificate key")
-	token := flag.String("token", "", "Auth token")
+	authtoken := flag.String("token", "", "Auth token")
 	flag.Parse()
 
-	TOKEN = *token
+	TOKEN = *authtoken
+	if TOKEN == "" {
+		panic("Missing auth token")
+	}
 
 	TEMPLATE = *template
 	fmt.Printf("Using template file located at %s\n", *template)
@@ -196,13 +187,11 @@ func main() {
 		panic(token.Error())
 	}
 	fmt.Printf("Connected to %s as %s and listening on topic: %s\n", *server, *clientID, *topic)
+	fmt.Printf("Exposing HTTP interface on %s\n", *address)
 
 	http.HandleFunc("/", HTTPHandler)
-	if *tlsCrt == "" || *tlsKey == "" {
-		fmt.Printf("Exposing HTTP interface on %s without TLS config\n", *address)
-		http.ListenAndServe(*address, nil)
-	} else {
-		fmt.Printf("Exposing HTTP interface on %s with TLS config\n", *address)
-		http.ListenAndServeTLS(*address, *tlsCrt, *tlsKey, nil)
+	e := http.ListenAndServe(*address, nil)
+	if e != nil {
+		fmt.Printf("HTTP server error: +#v", e)
 	}
 }
