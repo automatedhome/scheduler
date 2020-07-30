@@ -23,7 +23,7 @@ var MQTTClient mqtt.Client
 var MQTTTopic string
 var DATA types.Schedule
 var TEMPLATE string
-var REFERERS []string
+var TOKEN string
 
 func getRealAddr(r *http.Request) string {
 	remoteIP := ""
@@ -87,12 +87,15 @@ func onMessageReceived(client mqtt.Client, message mqtt.Message) {
 func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 	ip := getRealAddr(r)
 	fmt.Printf("Connected client from %s\n", ip)
-	//_, cidr, _ := net.ParseCIDR(internalNetwork)
-	//if !cidr.Contains(net.ParseIP(ip)) {
-	//	http.Error(w, "403 Access Forbidden", http.StatusForbidden)
-	//	return
-	//}
-	if !stringInSlice(r.Header.Get("Referer"), REFERERS) {
+
+	params, ok := r.URL.Query()["token"]
+	if !ok || len(params[0] < 1) {
+		http.Error(w, "403 Access Forbidden", http.StatusForbidden)
+		return
+	}
+	token := params[0]
+	if token != TOKEN {
+		fmt.Printf("Received incorrect token: %s\n", token)
 		http.Error(w, "403 Access Forbidden", http.StatusForbidden)
 		return
 	}
@@ -168,10 +171,10 @@ func main() {
 	template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
 	tlsCrt := flag.String("tlsCrt", "", "Path to a TLS certificate")
 	tlsKey := flag.String("tlsKey", "", "Path to a TLS certificate key")
-	referers := flag.String("referers", "", "Comma-separated list of accepted HTTP Referer Headers")
+	token := flag.String("token", "", "Auth token")
 	flag.Parse()
 
-	REFERERS = strings.Split(*referers, ",")
+	TOKEN = *token
 
 	TEMPLATE = *template
 	fmt.Printf("Using template file located at %s\n", *template)
