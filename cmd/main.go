@@ -142,9 +142,9 @@ func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 
 func init() {
 	DATA = types.Schedule{
-		DefaultTemperature: 18.0,
+		DefaultTemperature: 17.0,
 		Workday: []types.ScheduleCell{
-			{From: "05:00", To: "06:30", Temperature: 21.1},
+			// {From: "05:00", To: "06:30", Temperature: 21.1},
 			{From: "14:00", To: "21:00", Temperature: 22.2},
 		},
 		Freeday: []types.ScheduleCell{
