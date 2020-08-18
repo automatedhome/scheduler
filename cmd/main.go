@@ -1,86 +1,73 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/ioutil"
+	"log"
 	"math"
-	"net"
 	"net/http"
+	"os"
 	"strconv"
-
-	//  "os"
-	"encoding/json"
-	"flag"
 	"strings"
+
+	"flag"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"gopkg.in/yaml.v2"
+
 	types "github.com/automatedhome/scheduler/pkg/types"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-var MQTTTopic string
-var MQTTClient mqtt.Client
-var DATA types.Schedule
-var TEMPLATE string
-var TOKEN string
+var (
+	TEMPLATE           string
+	TOKEN              string
+	lastPass           time.Time
+	config             types.Config
+	internalConfigFile string
+	overrideEnd        time.Time
+	mode               types.Mode
+)
 
-func getRealAddr(r *http.Request) string {
-	remoteIP := ""
-	// the default is the originating ip. but we try to find better options because this is almost
-	// never the right IP
-	if parts := strings.Split(r.RemoteAddr, ":"); len(parts) == 2 {
-		remoteIP = parts[0]
-	}
-	// If we have a forwarded-for header, take the address from there
-	if xff := strings.Trim(r.Header.Get("X-Forwarded-For"), ","); len(xff) > 0 {
-		addrs := strings.Split(xff, ",")
-		lastFwd := addrs[len(addrs)-1]
-		if ip := net.ParseIP(lastFwd); ip != nil {
-			remoteIP = ip.String()
-		}
-		// parse X-Real-Ip header
-	} else if xri := r.Header.Get("X-Real-Ip"); len(xri) > 0 {
-		if ip := net.ParseIP(xri); ip != nil {
-			remoteIP = ip.String()
-		}
-	}
-
-	return remoteIP
-}
+var (
+	expectedTemperature = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "thermostat_expected_temperature",
+		Help: "Current expected temperature",
+	})
+)
 
 func parseFloat(number string) float64 {
 	tmp, _ := strconv.ParseFloat(number, 64)
 	return math.Round(tmp*100) / 100
 }
 
-//func publishData(client mqtt.Client, topic string) {
-func publishData() {
-	text, _ := json.Marshal(DATA)
-	//token := client.Publish(topic, 0, true, string(text))
-	token := MQTTClient.Publish(MQTTTopic, 0, true, string(text))
-	token.Wait()
-	if token.Error() != nil {
-		fmt.Printf("Failed to publish packet: %s\n", token.Error())
+func dumpConfig() {
+	d, err := yaml.Marshal(&config)
+	if err != nil {
+		log.Fatalf("error: %v", err)
 	}
-	fmt.Printf("Published packet to topic %s\n", MQTTTopic)
-}
-
-func onMessageReceived(client mqtt.Client, message mqtt.Message) {
-	fmt.Printf("Received message on topic: %s\nMessage: %s\n", message.Topic(), message.Payload())
-	if err := json.Unmarshal(message.Payload(), &DATA); err != nil {
-		fmt.Println("Failed to unmarshal JSON data from MQTT topic. Resending last good values.")
-		//publishData(client, message.Topic())
-		publishData()
+	err = ioutil.WriteFile(internalConfigFile, d, 0644)
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
-func HTTPHandler(w http.ResponseWriter, r *http.Request) {
-	ip := getRealAddr(r)
-	fmt.Printf("Connected client from %s\n", ip)
+func stringToDate(str string) time.Time {
+	now := time.Now()
+	t := strings.Split(str, ":")
+	h, _ := strconv.Atoi(t[0])
+	m, _ := strconv.Atoi(t[1])
+	return time.Date(now.Year(), now.Month(), now.Day(), h, m, 0, 0, time.Local)
+}
 
+func httpSchedule(w http.ResponseWriter, r *http.Request) {
 	params, ok := r.URL.Query()["token"]
 	if !ok || len(params[0]) < 1 {
-		fmt.Printf("No token received")
+		fmt.Println("No token received")
 		http.Error(w, "403 Access Forbidden", http.StatusForbidden)
 		return
 	}
@@ -128,38 +115,76 @@ func HTTPHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// Parsing ends
 
-		DATA = types.Schedule{
+		config.Schedule = types.Schedule{
 			DefaultTemperature: defaultTemperature,
 			Workday:            workdayCells,
 			Freeday:            freedayCells,
 		}
-		//      publishData(mqttClient, mqttTopic)
-		publishData()
 
+		dumpConfig()
 	}
-	tmpl.Execute(w, DATA)
+	tmpl.Execute(w, config.Schedule)
+}
+
+func httpConfig(w http.ResponseWriter, r *http.Request) {
+	js, err := json.Marshal(config)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
+func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
+	timeout := time.Duration(1 * time.Minute)
+	if lastPass.Add(timeout).After(time.Now()) {
+		w.WriteHeader(200)
+	} else {
+		w.WriteHeader(500)
+	}
+}
+
+func httpHoliday(w http.ResponseWriter, r *http.Request) {
+	if err := json.NewDecoder(r.Body).Decode(&mode.Holiday); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+func httpExpectedTemp(w http.ResponseWriter, r *http.Request) {
+	if err := json.NewDecoder(r.Body).Decode(&mode.Expected); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+func httpOverrideMode(w http.ResponseWriter, r *http.Request) {
+	if err := json.NewDecoder(r.Body).Decode(&mode.Override); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if mode.Override {
+		overrideEnd = time.Now().Add(time.Hour) // TODO: make override time configurable and read from config file
+	} else {
+		overrideEnd = time.Now()
+	}
+}
+
+func httpOperationMode(w http.ResponseWriter, r *http.Request) {
+	rsp, err := json.Marshal(mode)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(rsp)
 }
 
 func init() {
-	DATA = types.Schedule{
-		DefaultTemperature: 17.0,
-		Workday: []types.ScheduleCell{
-			// {From: "05:00", To: "06:30", Temperature: 21.1},
-			{From: "14:00", To: "21:00", Temperature: 22.2},
-		},
-		Freeday: []types.ScheduleCell{
-			{From: "07:00", To: "22:00", Temperature: 22.5},
-		},
-	}
-}
-
-func main() {
-	server := flag.String("server", "tcp://127.0.0.1:1883", "The full url of the MQTT server to connect to ex: tcp://127.0.0.1:1883")
-	topic := flag.String("topic", "thermostat/schedule", "Topic to publish on")
-	clientID := flag.String("clientid", "scheduler", "A clientid for the connection")
-	address := flag.String("address", ":3000", "Address to expose HTTP interface")
+	internalConfigFile = "/tmp/config.yaml"
 	template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
 	authtoken := flag.String("token", "", "Auth token")
+	configFile := flag.String("config", "config.yaml", "Provide configuration file")
 	flag.Parse()
 
 	TOKEN = *authtoken
@@ -167,31 +192,85 @@ func main() {
 		panic("Missing auth token")
 	}
 
+	var cfg string
+	if _, err := os.Stat(internalConfigFile); err == nil {
+		cfg = internalConfigFile
+	} else {
+		cfg = *configFile
+	}
+
+	log.Printf("Reading configuration from %s", cfg)
+	data, err := ioutil.ReadFile(cfg)
+	if err != nil {
+		log.Fatalf("File reading error: %v", err)
+		return
+	}
+
+	if err := yaml.UnmarshalStrict(data, &config); err != nil {
+		log.Fatalf("error: %v", err)
+	}
+	log.Printf("Reading following config from config file: %#v", config)
+
 	TEMPLATE = *template
 	fmt.Printf("Using template file located at %s\n", *template)
 
-	opts := mqtt.NewClientOptions().AddBroker(*server).SetClientID(*clientID)
-	opts.SetKeepAlive(2 * time.Second)
-	opts.SetPingTimeout(1 * time.Second)
-	opts.SetAutoReconnect(true)
+	mode.Holiday = false
+	mode.Override = false
+	mode.Expected = 0
+}
 
-	MQTTTopic = *topic
-	opts.OnConnect = func(MQTTCLIENT mqtt.Client) {
-		if token := MQTTCLIENT.Subscribe(*topic, 0, onMessageReceived); token.Wait() && token.Error() != nil {
-			panic(token.Error())
+func main() {
+	// Expose metrics
+	http.Handle("/metrics", promhttp.Handler())
+	// Expose config
+	http.HandleFunc("/config", httpConfig)
+	// Expose healthcheck
+	http.HandleFunc("/health", httpHealthCheck)
+	// override settings
+	http.HandleFunc("/mode", httpOperationMode)
+	http.HandleFunc("/mode/holiday", httpHoliday)
+	http.HandleFunc("/mode/override", httpOverrideMode)
+	http.HandleFunc("/mode/expected", httpExpectedTemp)
+	// Expose schedule
+	http.HandleFunc("/schedule", httpSchedule)
+	go func() {
+		if err := http.ListenAndServe(":3000", nil); err != nil {
+			panic("HTTP Server failed: " + err.Error())
 		}
-	}
+	}()
 
-	MQTTClient = mqtt.NewClient(opts)
-	if token := MQTTClient.Connect(); token.Wait() && token.Error() != nil {
-		panic(token.Error())
-	}
-	fmt.Printf("Connected to %s as %s and listening on topic: %s\n", *server, *clientID, *topic)
-	fmt.Printf("Exposing HTTP interface on %s\n", *address)
+	for {
+		time.Sleep(5 * time.Second)
+		lastPass = time.Now()
 
-	http.HandleFunc("/", HTTPHandler)
-	e := http.ListenAndServe(*address, nil)
-	if e != nil {
-		fmt.Printf("HTTP server error: +#v", e)
+		// Reset override temperature to 0 when override period expires
+		if time.Now().After(overrideEnd) {
+			mode.Override = false
+		}
+
+		// check if manual override heating mode is enabled
+		if mode.Override {
+			expectedTemperature.Set(mode.Expected)
+			continue
+		}
+
+		// check if now is the time to start heating
+		cells := config.Schedule.Workday
+		if mode.Holiday {
+			cells = config.Schedule.Freeday
+		}
+
+		temp := config.Schedule.DefaultTemperature
+		for _, cell := range cells {
+			from := stringToDate(cell.From)
+			to := stringToDate(cell.To)
+			if time.Now().After(from) && time.Now().Before(to) {
+				temp = cell.Temperature
+				continue
+			}
+		}
+
+		mode.Expected = temp
+		expectedTemperature.Set(temp)
 	}
 }

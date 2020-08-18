@@ -1,0 +1,16 @@
+---
+schedule:
+  default: 18
+  workday:
+    - from: "14:00"
+      to: "21:00"
+      temperature: 22.2
+  freeday:
+    - from: "07:00"
+      to: "22:00"
+      temperature: 22.5
+
+# mode:
+#   holiday: false
+#   override: false
+#   expected: 0
