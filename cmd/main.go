@@ -182,7 +182,7 @@ func httpOperationMode(w http.ResponseWriter, r *http.Request) {
 
 func init() {
 	internalConfigFile = "/tmp/config.yaml"
-	template := flag.String("template", "/usr/share/site.tmpl", "Path to a site template file")
+	template := flag.String("template", "site.html", "Path to a site template file")
 	authtoken := flag.String("token", "", "Auth token")
 	configFile := flag.String("config", "config.yaml", "Provide configuration file")
 	flag.Parse()
@@ -234,7 +234,7 @@ func main() {
 	// Expose schedule
 	http.HandleFunc("/schedule", httpSchedule)
 	go func() {
-		if err := http.ListenAndServe(":3000", nil); err != nil {
+		if err := http.ListenAndServe(":7009", nil); err != nil {
 			panic("HTTP Server failed: " + err.Error())
 		}
 	}()
