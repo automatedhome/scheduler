@@ -38,6 +38,10 @@ var (
 		Name: "thermostat_expected_temperature",
 		Help: "Current expected temperature",
 	})
+	overrideTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "thermostat_override_total",
+		Help: "Total number of manual overrides",
+	})
 )
 
 func parseFloat(number string) float64 {
@@ -153,8 +157,15 @@ func httpHoliday(w http.ResponseWriter, r *http.Request) {
 }
 
 func httpExpectedTemp(w http.ResponseWriter, r *http.Request) {
+	old := mode.Expected
 	if err := json.NewDecoder(r.Body).Decode(&mode.Expected); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if old != mode.Expected {
+		mode.Override = true
+		overrideTotal.Inc()
+		overrideEnd = time.Now().Add(time.Hour) // TODO: make override time configurable and read from config file
 	}
 }
 
@@ -164,6 +175,7 @@ func httpOverrideMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if mode.Override {
+		overrideTotal.Inc()
 		overrideEnd = time.Now().Add(time.Hour) // TODO: make override time configurable and read from config file
 	} else {
 		overrideEnd = time.Now()
