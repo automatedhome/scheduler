@@ -24,13 +24,13 @@ import (
 )
 
 var (
-	TEMPLATE           string
-	TOKEN              string
-	lastPass           time.Time
-	config             types.Config
-	internalConfigFile string
-	overrideEnd        time.Time
-	mode               types.Mode
+	TEMPLATE    string
+	TOKEN       string
+	lastPass    time.Time
+	config      types.Config
+	stateFile   string
+	overrideEnd time.Time
+	mode        types.Mode
 )
 
 var (
@@ -54,7 +54,7 @@ func dumpConfig() {
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
-	err = ioutil.WriteFile(internalConfigFile, d, 0644)
+	err = ioutil.WriteFile(stateFile, d, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -151,8 +151,13 @@ func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func httpHoliday(w http.ResponseWriter, r *http.Request) {
-	if err := json.NewDecoder(r.Body).Decode(&mode.Holiday); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if r.Method == "POST" {
+		if err := json.NewDecoder(r.Body).Decode(&mode.Holiday); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+	} else {
+		v := strconv.FormatBool(mode.Holiday)
+		w.Write([]byte(v))
 	}
 }
 
@@ -193,7 +198,7 @@ func httpOperationMode(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
-	internalConfigFile = "/tmp/config.yaml"
+	stateFile = "/tmp/config.yaml"
 	template := flag.String("template", "site.html", "Path to a site template file")
 	authtoken := flag.String("token", "", "Auth token")
 	configFile := flag.String("config", "config.yaml", "Provide configuration file")
@@ -205,8 +210,8 @@ func init() {
 	}
 
 	var cfg string
-	if _, err := os.Stat(internalConfigFile); err == nil {
-		cfg = internalConfigFile
+	if _, err := os.Stat(stateFile); err == nil {
+		cfg = stateFile
 	} else {
 		cfg = *configFile
 	}
