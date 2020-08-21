@@ -198,16 +198,18 @@ func httpOperationMode(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
-	stateFile = "/tmp/config.yaml"
 	template := flag.String("template", "site.html", "Path to a site template file")
 	authtoken := flag.String("token", "", "Auth token")
 	configFile := flag.String("config", "config.yaml", "Provide configuration file")
+	dataDir := flag.String("config", "/var/lib/thermostat", "Data directory")
 	flag.Parse()
 
 	TOKEN = *authtoken
 	if TOKEN == "" {
 		panic("Missing auth token")
 	}
+
+	stateFile = *dataDir + "/state.yaml"
 
 	var cfg string
 	if _, err := os.Stat(stateFile); err == nil {
