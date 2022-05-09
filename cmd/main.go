@@ -84,7 +84,12 @@ func httpSchedule(w http.ResponseWriter, r *http.Request) {
 
 	tmpl := template.Must(template.ParseFiles(TEMPLATE))
 	if r.Method == "POST" {
-		r.ParseForm()
+		err := r.ParseForm()
+		if err != nil {
+			log.Printf("Cannot parse form: %v\n", err)
+			http.Error(w, "Incorrect form", http.StatusBadRequest)
+			return
+		}
 
 		// Parsing Form.
 		// TODO: Convert Form data to JSON on a client and unmarshal it here to correct data structure
@@ -127,7 +132,12 @@ func httpSchedule(w http.ResponseWriter, r *http.Request) {
 
 		dumpConfig()
 	}
-	tmpl.Execute(w, config.Schedule)
+	err := tmpl.Execute(w, config.Schedule)
+	if err != nil {
+		log.Printf("Error templating config: %v\n", err)
+		http.Error(w, "Templating error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func httpConfig(w http.ResponseWriter, r *http.Request) {
@@ -138,7 +148,10 @@ func httpConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	_, err = w.Write(js)
+	if err != nil {
+		log.Printf("Error sending config values: %v\n", err)
+	}
 }
 
 func httpHealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +170,10 @@ func httpHoliday(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		v := strconv.FormatBool(mode.Holiday)
-		w.Write([]byte(v))
+		_, err := w.Write([]byte(v))
+		if err != nil {
+			log.Printf("Error sending holiday mode: %v\n", err)
+		}
 	}
 }
 
@@ -194,7 +210,10 @@ func httpOperationMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(rsp)
+	_, err = w.Write(rsp)
+	if err != nil {
+		log.Printf("Error sending operation mode: %v\n", err)
+	}
 }
 
 func init() {
