@@ -1,15 +1,14 @@
-FROM arm32v7/golang:stretch
-
-COPY qemu-arm-static /usr/bin/
+FROM golang:1.18 as builder
+ 
 WORKDIR /go/src/github.com/automatedhome/scheduler
 COPY . .
-RUN make build
+RUN CGO_ENABLED=0 go build -o scheduler cmd/main.go
 
-FROM arm32v7/busybox:1.30-glibc
+FROM busybox:glibc
 
-COPY site.html /usr/share/site.tmpl
-COPY config.yaml /usr/share/config.yaml
-COPY --from=0 /go/src/github.com/automatedhome/scheduler/scheduler /usr/bin/scheduler
+COPY --from=builder /go/src/github.com/automatedhome/scheduler/site.html /usr/share/site.tmpl
+COPY --from=builder /go/src/github.com/automatedhome/scheduler/config.yaml /usr/share/config.yaml
+COPY --from=builder /go/src/github.com/automatedhome/scheduler/scheduler /usr/bin/scheduler
 
 HEALTHCHECK --timeout=5s --start-period=1m \
   CMD wget --quiet --tries=1 --spider http://localhost:7009/health || exit 1
